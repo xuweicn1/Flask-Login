@@ -74,7 +74,24 @@ class Config(object):
 
 `app.dp`项目运行后产生
 
-## 初始化模块
+## 项目运行
+
+到项目根目录
+
+```sh
+PS D:\Days\Flask-Login> flask run
+ * Serving Flask-SocketIO app "microblog.py"
+ * Forcing debug mode off
+ * Serving Flask app "microblog.py"
+ * Environment: production
+   WARNING: Do not use the development server in a production environment.
+   Use a production WSGI server instead.
+ * Debug mode: off
+ * Running on http://127.0.0.1:5000/ (Press CTRL+C to quit)
+127.0.0.1 - - [30/Nov/2018 11:22:44] "[37mGET /login?next=%2F HTTP/1.1[0m" 200 -
+```
+
+## 定义初始化模块
 
 `app/__init__.py`
 
@@ -86,10 +103,21 @@ from config import Config
 from flask_login import LoginManager
 
 app = Flask(__name__)
+
+# 定义配置
 app.config.from_object(Config)
+
+# 定义数据库
 db = SQLAlchemy(app)
+
+# 数据库迁移
 migrate = Migrate(app, db)
+
+# Flask-Login初始化
 login = LoginManager(app)
+    
+# login 是视图函数名称
+# 游客如果访问其他页面将跳转到登陆界面
 login.login_view = 'login'
 
 from app import routes, models
@@ -120,9 +148,17 @@ from app import routes, models
 ```python
 from datetime import datetime
 from app import db, login
+
+# 密码哈希和验证
 from werkzeug.security import generate_password_hash, check_password_hash
+
+# UserMixin类实现绝大部分的用户模型
 from flask_login import UserMixin
 
+# 1、定义用户数据库模型
+# FUserMixin：用来定义用户状态
+# db.Model 数据库基类
+# 密码哈希验证
 
 class User(UserMixin,db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -134,15 +170,25 @@ class User(UserMixin,db.Model):
     def __repr__(self):
         return '<User {}>'.format(self.username)
 
+    #将‘password’ 变成散列密码
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
 
+    #将‘password’ 变成散列密码和self.password_hash对比，相同返回True，不同返回False
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
 
+
+
+#2 、加载数据库匹配用户
+# @login.user_loader回调函数
+# 向Flask-Login注册用户加载程序，传递的参数是字符串
+# 在数据库中用用户标识符查找
+# 如果能找到返回用户对象，否则 返回None。
 @login.user_loader
 def load_user(id):
     return User.query.get(int(id))
+
 
 class Post(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -152,7 +198,6 @@ class Post(db.Model):
 
     def __repr__(self):
         return '<Post {}>'.format(self.body)
-
 ```
 
 ## 路由和视图函数
@@ -171,7 +216,7 @@ from app import app, db
 from app.forms import LoginForm, RegistrationForm
 from app.models import User
 
-
+# 起始页
 @app.route('/')
 @app.route('/index')
 @login_required
@@ -188,13 +233,17 @@ def index():
     ]
     return render_template('index.html', title='Home', posts=posts)
 
-
+# 登陆用户
 @app.route('/login', methods=['GET', 'POST'])
 def login():
+    #如果是登陆用户，跳转到'index'
     if current_user.is_authenticated:
         return redirect(url_for('index'))
+
+    #调用LoginForm类
     form = LoginForm()
     if form.validate_on_submit():
+        #query.filter_by() 把等值过滤器添加到原查询上,此处提出填入user值
         user = User.query.filter_by(username=form.username.data).first()
         if user is None or not user.check_password(form.password.data):
             flash('Invalid username or password')
@@ -206,13 +255,13 @@ def login():
         return redirect(next_page)
     return render_template('login.html', title='Sign In', form=form)
 
-
+# 注销用户
 @app.route('/logout')
 def logout():
     logout_user()
     return redirect(url_for('index'))
 
-
+# 用户注册
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if current_user.is_authenticated:
@@ -243,14 +292,14 @@ from wtforms import StringField, PasswordField, BooleanField, SubmitField
 from wtforms.validators import ValidationError, DataRequired, Email, EqualTo
 from app.models import User
 
-
+# 用户登陆
 class LoginForm(FlaskForm):
     username = StringField('Username', validators=[DataRequired()])
     password = PasswordField('Password', validators=[DataRequired()])
     remember_me = BooleanField('Remember Me')
     submit = SubmitField('Sign In')
 
-
+# 用户注册
 class RegistrationForm(FlaskForm):
     username = StringField('Username', validators=[DataRequired()])
     email = StringField('Email', validators=[DataRequired(), Email()])
@@ -321,7 +370,7 @@ class RegistrationForm(FlaskForm):
 {% endblock %}
 ```
 
-`app/templates/register.html`：用户注册
+`app/templates/register.html`：注册用户模板
 
 ```html
 {% extends "base.html" %}
@@ -363,7 +412,7 @@ class RegistrationForm(FlaskForm):
 {% endblock %}
 ```
 
-`app/templates/login.html`：游客请登陆
+`app/templates/login.html`：未注册用户链接到登陆页面
 
 ```html
 {% extends "base.html" %}
@@ -393,24 +442,3 @@ class RegistrationForm(FlaskForm):
     <p>New User? <a href="{{ url_for('register') }}">Click to Register!</a></p>
 {% endblock %}
 ```
-
-## 项目运行
-
-到项目根目录
-
-```sh
-PS D:\Days\Flask-Login> flask run
- * Serving Flask-SocketIO app "microblog.py"
- * Forcing debug mode off
- * Serving Flask app "microblog.py"
- * Environment: production
-   WARNING: Do not use the development server in a production environment.
-   Use a production WSGI server instead.
- * Debug mode: off
- * Running on http://127.0.0.1:5000/ (Press CTRL+C to quit)
-127.0.0.1 - - [30/Nov/2018 11:22:44] "[37mGET /login?next=%2F HTTP/1.1[0m" 200 -
-```
-
-浏览器打开：<http://localhost:5000>
-
-![登陆界面](https://img2018.cnblogs.com/blog/720033/201811/720033-20181130115038393-243037759.png)
